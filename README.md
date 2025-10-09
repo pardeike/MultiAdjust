@@ -1,17 +1,13 @@
-# MultiAdjust — Blender add-on for fast batch edits
+# Multi Adjust — Blender add-on for fast batch edits
 
 Batch-set transforms for selected objects and set X/Y/Z for selected mesh components with a compact panel and a terse command box.
 
 - **Blender:** 4.2 or newer
-- **Panel:** `3D Viewport > N-panel > MultiAdjust`
+- **Panel:** `3D Viewport > N-panel > Multi Adjust`
 - **Undo:** supported
-
----
 
 ## Why
 Common edits are repetitive and modal. This add-on sets exact values across many objects or mesh selections in one action.
-
----
 
 ## Features
 **Object Mode**
@@ -29,26 +25,15 @@ Common edits are repetitive and modal. This add-on sets exact values across many
 - Fast text input. Mix tokens. Examples:
   `rx=45` · `x=0 z=2` · `scale.y=1.2` · `space=global` · `target=faces`
 
----
-
 ## Installation
-**Option A: ZIP**
-1. Blender → **Edit ▸ Preferences ▸ Add-ons ▸ Install...**
-2. Choose `MultiAdjust.zip` and enable **MultiAdjust**.
-
-**Option B: Single file**
-1. Save `multiadjust.py` somewhere.
-2. Blender → **Edit ▸ Preferences ▸ Add-ons ▸ Install...**
-3. Pick `multiadjust.py`, then enable **MultiAdjust**.
-4. Open the 3D Viewport, press **N**, pick the **MultiAdjust** tab.
-
----
+- **Blender Extensions:** search for “Multi Adjust” inside the official extension browser and click *Install*.
+- **Manual install:** download the repository as a `.zip`, then use `Edit ▸ Preferences ▸ Add-ons ▸ Install…` and choose the archive.
 
 ## Quick start
 
 ### 1) Objects
 - Select objects.
-- In **MultiAdjust > Objects** pick **Location / Rotation / Scale / Origin**.
+- In **Multi Adjust > Objects** pick **Location / Rotation / Scale / Origin**.
 - Enable axis checkboxes and set values, and optionally toggle **Visibility**.
 - Click **Apply to Selected Objects**.
 
@@ -61,7 +46,7 @@ Examples:
 ### 2) Edit Mesh
 - Enter **Edit Mode** on a mesh object.
 - Select verts/edges/faces.
-- In **MultiAdjust ▸ Edit Mesh**, choose **Affect** (Auto/Verts/Edges/Faces) and **Space** (Local/Global).
+- In **Multi Adjust ▸ Edit Mesh**, choose **Affect** (Auto/Verts/Edges/Faces) and **Space** (Local/Global).
 - Enable axes and set values.
 - Click **Apply to Selected Geometry**.
 
@@ -84,8 +69,6 @@ You can combine:
 `x=0 z=2 space=global target=faces` (Edit Mesh)
 
 Note: if a single command includes multiple object transforms, priority is **Rotation > Scale > Origin > Location**.
-
----
 
 ## Reference
 
@@ -111,15 +94,11 @@ Note: if a single command includes multiple object transforms, priority is **Rot
   Edge mode → verts of selected edges.
   Face mode → verts of selected faces.
 
----
-
 ## Tips
 - Use the **Origin** transform to reposition pivots while keeping geometry where it is.
 - World-space writes are supported for **Location** in Object Mode and for mesh coordinates in **Global** space. Rotation and Scale apply in local space.
 - Works with any object type that has location/rotation/scale.
 - All operations are undoable.
-
----
 
 ## Troubleshooting
 - **"No selected objects"**: select at least one editable object in Object Mode.
@@ -127,19 +106,12 @@ Note: if a single command includes multiple object transforms, priority is **Rot
 - **"No verts resolved from selection"**: adjust selection or set **Affect**.
 - **"No axis enabled"**: toggle the X/Y/Z checkboxes or supply axis tokens in the command.
 
----
-
 ## Limitations
 - Object **Rotation** and **Scale** write in local space only.
 - Mesh editing affects the **active mesh object** in Edit Mode. Multi-object Edit Mode is not supported by this operator.
 - The command box applies one object transform category per run (see priority rule).
 
----
+The add-on targets Blender 4.2+ and is released under the GPLv3 license.
 
-## Changelog
-**1.1.0**
-- Added Origin transform support (UI and command tokens) that keeps geometry stationary.
-- Added viewport/render visibility toggles for selected objects.
-
-**1.0.0**
-- Initial release: Object transforms, Edit Mesh axis set, command box, local/global space options.
+## Feedback & Contributions
+Bug reports, ideas, and pull requests are welcome. Open an issue on the GitHub repository or reach out to the maintainer listed in the manifest. Happy blending!
