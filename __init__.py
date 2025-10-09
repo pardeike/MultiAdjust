@@ -4,7 +4,7 @@
 # pyright: reportInvalidTypeForm=false
 
 from .manifest import parse_manifest
-bl_info = parse_manifest({"location": "3D Viewport > N-panel > Quick Set", "category": "3D View"})
+bl_info = parse_manifest({"location": "3D Viewport > N-panel > Multi Adjust", "category": "3D View"})
 
 import re
 import bpy
@@ -22,13 +22,14 @@ class QS_Props(bpy.types.PropertyGroup):
             ('LOC', "Location", "Set object location"),
             ('ROT', "Rotation", "Set object rotation (Euler)"),
             ('SCALE', "Scale", "Set object scale"),
+            ('ORIGIN', "Origin", "Set object origin without moving geometry"),
         ],
         default='ROT'
     )
 
     object_space: bpy.props.EnumProperty(
         name="Space",
-        description="Space for object Location setting",
+        description="Space for object Location or Origin setting",
         items=[('LOCAL', "Local", ""), ('WORLD', "World", "")],
         default='LOCAL'
     )
@@ -67,6 +68,28 @@ class QS_Props(bpy.types.PropertyGroup):
         default=""
     )
 
+    # Visibility batch toggles
+    vis_apply_viewport: bpy.props.BoolProperty(
+        name="Viewport",
+        description="Apply viewport visibility to selected objects",
+        default=False
+    )
+    vis_viewport_hide: bpy.props.BoolProperty(
+        name="Hide in Viewport",
+        description="Hide selected objects in the viewport (requires Viewport toggle)",
+        default=False
+    )
+    vis_apply_render: bpy.props.BoolProperty(
+        name="Render",
+        description="Apply render visibility to selected objects",
+        default=False
+    )
+    vis_render_hide: bpy.props.BoolProperty(
+        name="Hide in Render",
+        description="Hide selected objects from rendering (requires Render toggle)",
+        default=False
+    )
+
 # ------------------------- Utilities -------------------------
 
 def _set_world_translation(obj: bpy.types.Object, x=None, y=None, z=None):
@@ -77,6 +100,65 @@ def _set_world_translation(obj: bpy.types.Object, x=None, y=None, z=None):
     if z is not None: t.z = z
     mw.translation = t
     obj.matrix_world = mw  # lets Blender solve local transforms
+
+def _set_object_origin(obj: bpy.types.Object, x=None, y=None, z=None, space='LOCAL'):
+    """
+    Move the object's origin without moving its visible geometry.
+    Values are interpreted in either local or world space depending on `space`.
+    """
+    mw_before = obj.matrix_world.copy()
+    translation_before = mw_before.translation.copy()
+
+    if space == 'WORLD':
+        target_translation = translation_before.copy()
+        if x is not None: target_translation.x = x
+        if y is not None: target_translation.y = y
+        if z is not None: target_translation.z = z
+        if (target_translation - translation_before).length_squared != 0.0:
+            mw_new = mw_before.copy()
+            mw_new.translation = target_translation
+            obj.matrix_world = mw_new
+    else:
+        target_location = obj.location.copy()
+        if x is not None: target_location.x = x
+        if y is not None: target_location.y = y
+        if z is not None: target_location.z = z
+        if target_location != obj.location:
+            obj.location = target_location
+
+    translation_after = obj.matrix_world.translation.copy()
+    delta_world = translation_after - translation_before
+    if delta_world.length_squared == 0.0:
+        return
+
+    data = getattr(obj, "data", None)
+    if not data or not hasattr(data, "transform"):
+        # Nothing to offset (empties, cameras, etc.)
+        return
+
+    # Ensure we do not affect other objects sharing the same datablock
+    if getattr(data, "users", 1) > 1:
+        data = data.copy()
+        obj.data = data
+
+    orient = mw_before.to_3x3()
+    try:
+        orient_inv = orient.inverted()
+    except (ValueError, ZeroDivisionError):
+        return
+    delta_local = orient_inv @ delta_world
+
+    data.transform(Matrix.Translation(-delta_local))
+    updater = getattr(data, "update", None)
+    if callable(updater):
+        try:
+            updater()
+        except TypeError:
+            # Some datablocks expect keyword arguments; best effort with defaults
+            try:
+                updater(calc_edges=False)
+            except TypeError:
+                pass
 
 def _get_euler_from_object(obj: bpy.types.Object) -> Euler:
     mode = obj.rotation_mode
@@ -198,6 +280,16 @@ class QS_OT_apply_object(bpy.types.Operator):
                 if X is not None: obj.scale.x = X
                 if Y is not None: obj.scale.y = Y
                 if Z is not None: obj.scale.z = Z
+        elif P.apply_transform == 'ORIGIN':
+            for obj in objs:
+                _set_object_origin(obj, X, Y, Z, P.object_space)
+
+        if P.vis_apply_viewport:
+            for obj in objs:
+                obj.hide_set(P.vis_viewport_hide)
+        if P.vis_apply_render:
+            for obj in objs:
+                obj.hide_render = P.vis_render_hide
 
         return {'FINISHED'}
 
@@ -269,11 +361,13 @@ class QS_OT_parse_and_apply(bpy.types.Operator):
         # Heuristics: default target by context
         target_mesh = (context.mode == 'EDIT_MESH')
         pending_object_loc = False
+        pending_object_origin = False
 
         # Local state for parsed values
         obj_loc = {'x': None, 'y': None, 'z': None}
         obj_rot = {'x': None, 'y': None, 'z': None}  # degrees
         obj_sca = {'x': None, 'y': None, 'z': None}
+        obj_origin = {'x': None, 'y': None, 'z': None}
         mesh_xyz = {'x': None, 'y': None, 'z': None}
         obj_space_world = None
         mesh_space_global = None
@@ -343,6 +437,13 @@ class QS_OT_parse_and_apply(bpy.types.Operator):
                 assign_map(obj_sca, axis, valf)
                 target_mesh = False
                 continue
+            if k.startswith('origin.') or k.startswith('orig.') or k.startswith('o.'):
+                axis = k[-1]
+                valf, _ = _parse_float_with_unit(v)
+                assign_map(obj_origin, axis, valf)
+                pending_object_origin = True
+                target_mesh = False
+                continue
 
             # Shorthand: rx, ry, rz (deg by default)
             if k in ('rx', 'ry', 'rz'):
@@ -358,6 +459,13 @@ class QS_OT_parse_and_apply(bpy.types.Operator):
                 axis = k[-1]
                 valf, _ = _parse_float_with_unit(v)
                 assign_map(obj_sca, axis, valf)
+                target_mesh = False
+                continue
+            if k in ('ox', 'oy', 'oz'):
+                axis = k[-1]
+                valf, _ = _parse_float_with_unit(v)
+                assign_map(obj_origin, axis, valf)
+                pending_object_origin = True
                 target_mesh = False
                 continue
 
@@ -394,7 +502,7 @@ class QS_OT_parse_and_apply(bpy.types.Operator):
         if obj_space_world is not None:
             P.object_space = 'WORLD' if obj_space_world else 'LOCAL'
 
-        # Decide transform priority: rotation > scale > location
+        # Decide transform priority: rotation > scale > origin > location
         if any(v is not None for v in obj_rot.values()):
             P.apply_transform = 'ROT'
             P.x_enable = obj_rot['x'] is not None
@@ -411,6 +519,14 @@ class QS_OT_parse_and_apply(bpy.types.Operator):
             if P.x_enable: P.x_value = obj_sca['x']
             if P.y_enable: P.y_value = obj_sca['y']
             if P.z_enable: P.z_value = obj_sca['z']
+        elif pending_object_origin or any(v is not None for v in obj_origin.values()):
+            P.apply_transform = 'ORIGIN'
+            P.x_enable = obj_origin['x'] is not None
+            P.y_enable = obj_origin['y'] is not None
+            P.z_enable = obj_origin['z'] is not None
+            if P.x_enable: P.x_value = obj_origin['x']
+            if P.y_enable: P.y_value = obj_origin['y']
+            if P.z_enable: P.z_value = obj_origin['z']
         elif pending_object_loc or any(v is not None for v in obj_loc.values()):
             P.apply_transform = 'LOC'
             P.x_enable = obj_loc['x'] is not None
@@ -427,11 +543,11 @@ class QS_OT_parse_and_apply(bpy.types.Operator):
 
 # ------------------------- UI Panel -------------------------
 
-class VIEW3D_PT_quick_set(bpy.types.Panel):
-    bl_label = "Quick Set"
+class VIEW3D_PT_multi_adjust(bpy.types.Panel):
+    bl_label = "Multi Adjust"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Quick Set"
+    bl_category = "Multi Adjust"
 
     @classmethod
     def poll(cls, context):
@@ -455,7 +571,7 @@ class VIEW3D_PT_quick_set(bpy.types.Panel):
             box.label(text="Objects")
             row = box.row(align=True)
             row.prop(P, "apply_transform", expand=True)
-            if P.apply_transform == 'LOC':
+            if P.apply_transform in {'LOC', 'ORIGIN'}:
                 row = box.row(align=True)
                 row.prop(P, "object_space", expand=True)
 
@@ -466,6 +582,19 @@ class VIEW3D_PT_quick_set(bpy.types.Panel):
             r.prop(P, "y_enable"); r.prop(P, "y_value")
             r = col.row(align=True)
             r.prop(P, "z_enable"); r.prop(P, "z_value")
+
+            box.separator()
+            box.label(text="Visibility")
+            row = box.row(align=True)
+            row.prop(P, "vis_apply_viewport", text="Viewport", toggle=True)
+            sub = row.row(align=True)
+            sub.enabled = P.vis_apply_viewport
+            sub.prop(P, "vis_viewport_hide", text="Hide", toggle=True)
+            row = box.row(align=True)
+            row.prop(P, "vis_apply_render", text="Render", toggle=True)
+            sub = row.row(align=True)
+            sub.enabled = P.vis_apply_render
+            sub.prop(P, "vis_render_hide", text="Hide", toggle=True)
 
             box.operator(QS_OT_apply_object.bl_idname, text="Apply to Selected Objects")
 
@@ -496,13 +625,14 @@ classes = (
     QS_OT_apply_object,
     QS_OT_apply_mesh,
     QS_OT_parse_and_apply,
-    VIEW3D_PT_quick_set,
+    VIEW3D_PT_multi_adjust,
 )
 
 def register():
     for c in classes:
         bpy.utils.register_class(c)
     bpy.types.Scene.qs = bpy.props.PointerProperty(type=QS_Props)
+    print("Registered MultiAdjust")
 
 def unregister():
     del bpy.types.Scene.qs
