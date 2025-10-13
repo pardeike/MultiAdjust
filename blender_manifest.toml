@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "multi_adjust"
-version = "1.0.0"
+version = "1.0.1"
 name = "Multi Adjust"
 tagline = "Edits properties of multiple things together"
 maintainer = "Brrainz <andreas@pardeike.net>"
@@ -17,4 +17,14 @@ license = [
 
 copyright = [
   "2025 Andreas Pardeike",
+]
+
+[build]
+paths_exclude_pattern = [
+  "__pycache__/",
+  ".*",
+  "*.bat",
+  "*.afphoto",
+  "*.png",
+  "*.zip"
 ]

@@ -1,58 +1,23 @@
-# Multi Adjust — Blender add-on for fast batch edits
+# Multi Adjust
 
-Batch-set transforms for selected objects and set X/Y/Z for selected mesh components with a compact panel and a terse command box.
+Multi Adjust keeps common Blender tweaks in one place so you can nudge several things at once instead of repeating the same move.
 
-- **Blender:** 4.2 or newer
-- **Panel:** `3D Viewport > N-panel > Multi Adjust`
-- **Undo:** supported
+## What you can do
+- Match location, rotation, scale, or origin for every selected object with one click.
+- Swap between local and world space when aligning objects or mesh points.
+- Flatten or align mesh selections and curve handles by typing the X, Y, or Z value you want.
+- Tweak curve weight, radius, or tilt while you adjust their position.
+- Flip viewport or render visibility for the whole selection in a single pass.
 
-## Why
-Common edits are repetitive and modal. This add-on sets exact values across many objects or mesh selections in one action.
+## Using the panel
+1. Select a few objects, mesh elements, or curve points.
+2. Open the **Multi Adjust** tab in the 3D Viewport sidebar.
+3. Turn on the axes you care about and type the numbers.
+4. Press the apply button that matches your current mode.
 
-## Features
-**Object Mode**
-- Set **Location**, **Rotation**, **Scale**, or **Origin** on all selected objects.
-- Location and Origin support **Local** or **World** space write.
-- Rotation uses degrees in UI. Works with any rotation mode.
-- Batch-toggle viewport or render visibility across the selection.
+## Command box
+Prefer typing? Pop a short line like `rx=45`, `x=0 z=2`, or `target=faces space=global` into the command box and hit **Run**. Multi Adjust reads the words, updates the panel, and runs the right action right away.
 
-**Edit Mesh Mode**
-- Set **X/Y/Z** for selected vertices, or vertices of selected **edges** or **faces**.
-- **Local** or **Global** space write.
-- Auto target respects current select mode (vert/edge/face).
-
-**Command Box**
-- Fast text input. Mix tokens. Examples:
-  `rx=45` · `x=0 z=2` · `scale.y=1.2` · `space=global` · `target=faces`
-
-## Installation
-- **Blender Extensions:** search for “Multi Adjust” inside the official extension browser and click *Install*.
-- **Manual install:** download the repository as a `.zip`, then use `Edit ▸ Preferences ▸ Add-ons ▸ Install…` and choose the archive.
-
-## Quick start
-
-### 1) Objects
-- Select objects.
-- In **Multi Adjust > Objects** pick **Location / Rotation / Scale / Origin**.
-- Enable axis checkboxes and set values, and optionally toggle **Visibility**.
-- Click **Apply to Selected Objects**.
-
-Examples:
-- Set all objects' Z rotation to 45 deg: enable **Rotation**, enable **Z**, value `45`, **Apply**.
-- Move all objects to world X=1, Z=2: set **Transform: Location**, **Space: World**, enable **X=1** and **Z=2**, **Apply**.
-- Re-center origins at world Z=0 without moving geometry: choose **Origin**, **Space: World**, enable **Z=0**, **Apply**.
-- Hide the selection in renders but keep it in the viewport: enable **Visibility > Render**, set **Hide**, **Apply**.
-
-### 2) Edit Mesh
-- Enter **Edit Mode** on a mesh object.
-- Select verts/edges/faces.
-- In **Multi Adjust ▸ Edit Mesh**, choose **Affect** (Auto/Verts/Edges/Faces) and **Space** (Local/Global).
-- Enable axes and set values.
-- Click **Apply to Selected Geometry**.
-
-Example: flatten selected verts to `z=0` in Global space: **Affect: Auto**, **Space: Global**, enable **Z=0**, **Apply**.
-
-### 3) Command box (works in either mode)
 Type commands then press **Run**.
 
 - **Bare axes**: `x=0 z=2`
@@ -88,30 +53,8 @@ Note: if a single command includes multiple object transforms, priority is **Rot
 - Rotation: degrees by default; append `rad` for radians.
 - Distances: scene units.
 
-### Selection resolution in Edit Mesh
-- **Auto** uses the current select mode.
-  Vert mode → selected verts.
-  Edge mode → verts of selected edges.
-  Face mode → verts of selected faces.
-
-## Tips
-- Use the **Origin** transform to reposition pivots while keeping geometry where it is.
-- World-space writes are supported for **Location** in Object Mode and for mesh coordinates in **Global** space. Rotation and Scale apply in local space.
-- Works with any object type that has location/rotation/scale.
-- All operations are undoable.
-
-## Troubleshooting
-- **"No selected objects"**: select at least one editable object in Object Mode.
-- **"Need a mesh in Edit Mode"**: enter Edit Mode on a mesh.
-- **"No verts resolved from selection"**: adjust selection or set **Affect**.
-- **"No axis enabled"**: toggle the X/Y/Z checkboxes or supply axis tokens in the command.
-
-## Limitations
-- Object **Rotation** and **Scale** write in local space only.
-- Mesh editing affects the **active mesh object** in Edit Mode. Multi-object Edit Mode is not supported by this operator.
-- The command box applies one object transform category per run (see priority rule).
-
-The add-on targets Blender 4.2+ and is released under the GPLv3 license.
-
-## Feedback & Contributions
-Bug reports, ideas, and pull requests are welcome. Open an issue on the GitHub repository or reach out to the maintainer listed in the manifest. Happy blending!
+## Friendly notes
+- Everything respects Blender's undo history.
+- Built for Blender 4.2 and newer.
+- If nothing changes, make sure an axis is enabled or the command includes a value.
+- Feedback and ideas are welcome; check the add-on manifest for contact details.

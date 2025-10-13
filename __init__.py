@@ -9,10 +9,45 @@ bl_info = parse_manifest({"location": "3D Viewport > N-panel > Multi Adjust", "c
 import re
 import bpy
 import bmesh
-from math import radians
+from math import radians, degrees
 from mathutils import Matrix, Vector, Euler
 
-# ------------------------- Properties -------------------------
+AXES = ('x', 'y', 'z')
+
+
+def _axis_values_from_props(props) -> dict[str, float | None]:
+    """Return per-axis values from UI props only when the axis toggle is enabled."""
+    return {
+        axis: getattr(props, f"{axis}_value") if getattr(props, f"{axis}_enable") else None
+        for axis in AXES
+    }
+
+
+def _assign_axis_props(props, values: dict[str, float | None]) -> None:
+    """Write axis toggles and values back to UI props."""
+    for axis in AXES:
+        val = values.get(axis)
+        setattr(props, f"{axis}_enable", val is not None)
+        if val is not None:
+            setattr(props, f"{axis}_value", val)
+
+
+def _assign_axes(target, values: dict[str, float | None]) -> None:
+    """Set attributes x/y/z on target for the values that are not None."""
+    for axis, val in values.items():
+        if val is not None:
+            setattr(target, axis, val)
+
+
+def _normalize_rotation_value(value: float | None, unit: str | None) -> float | None:
+    """Convert raw rotation to degrees for UI storage."""
+    if value is None:
+        return None
+    if unit == 'rad':
+        return degrees(value)
+    return value
+
+## Properties
 
 class QS_Props(bpy.types.PropertyGroup):
     # Mode-aware toggles and values
@@ -98,7 +133,7 @@ class QS_Props(bpy.types.PropertyGroup):
         default=False
     )
 
-# ------------------------- Utilities -------------------------
+### Utilities
 
 def _set_world_translation(obj: bpy.types.Object, x=None, y=None, z=None):
     mw = obj.matrix_world.copy()
@@ -241,7 +276,7 @@ def _parse_float_with_unit(s: str):
         return val, "rad"
     return val, None
 
-# ------------------------- Operators -------------------------
+## Operators
 
 class QS_OT_apply_object(bpy.types.Operator):
     bl_idname = "view3d.qs_apply_object"
@@ -257,40 +292,44 @@ class QS_OT_apply_object(bpy.types.Operator):
             self.report({'INFO'}, "No selected objects")
             return {'CANCELLED'}
 
-        X = P.x_value if P.x_enable else None
-        Y = P.y_value if P.y_enable else None
-        Z = P.z_value if P.z_enable else None
+        axis_values = _axis_values_from_props(P)
 
         if P.apply_transform == 'LOC':
             for obj in objs:
                 if P.object_space == 'WORLD':
-                    _set_world_translation(obj, X, Y, Z)
+                    _set_world_translation(
+                        obj,
+                        axis_values.get('x'),
+                        axis_values.get('y'),
+                        axis_values.get('z'),
+                    )
                 else:
-                    if X is not None: obj.location.x = X
-                    if Y is not None: obj.location.y = Y
-                    if Z is not None: obj.location.z = Z
+                    _assign_axes(obj.location, axis_values)
 
         elif P.apply_transform == 'ROT':
-            # Inputs interpreted as degrees
-            rx = radians(P.x_value) if P.x_enable else None
-            ry = radians(P.y_value) if P.y_enable else None
-            rz = radians(P.z_value) if P.z_enable else None
-
+            rad_values = {
+                axis: radians(val) if val is not None else None
+                for axis, val in axis_values.items()
+            }
             for obj in objs:
                 e = _get_euler_from_object(obj)
-                if rx is not None: e.x = rx
-                if ry is not None: e.y = ry
-                if rz is not None: e.z = rz
+                for axis, value in rad_values.items():
+                    if value is not None:
+                        setattr(e, axis, value)
                 _apply_euler_to_object(obj, e)
 
         elif P.apply_transform == 'SCALE':
             for obj in objs:
-                if X is not None: obj.scale.x = X
-                if Y is not None: obj.scale.y = Y
-                if Z is not None: obj.scale.z = Z
+                _assign_axes(obj.scale, axis_values)
         elif P.apply_transform == 'ORIGIN':
             for obj in objs:
-                _set_object_origin(obj, X, Y, Z, P.object_space)
+                _set_object_origin(
+                    obj,
+                    axis_values.get('x'),
+                    axis_values.get('y'),
+                    axis_values.get('z'),
+                    P.object_space,
+                )
 
         if P.vis_apply_viewport:
             for obj in objs:
@@ -315,10 +354,8 @@ class QS_OT_apply_mesh(bpy.types.Operator):
         scn = context.scene
         P = scn.qs
 
-        X = P.x_value if P.x_enable else None
-        Y = P.y_value if P.y_enable else None
-        Z = P.z_value if P.z_enable else None
-        if X is None and Y is None and Z is None:
+        axis_values = _axis_values_from_props(P)
+        if not any(val is not None for val in axis_values.values()):
             self.report({'INFO'}, "No axis enabled")
             return {'CANCELLED'}
 
@@ -336,15 +373,11 @@ class QS_OT_apply_mesh(bpy.types.Operator):
         if P.mesh_space == 'GLOBAL':
             for v in verts:
                 w = mw @ v.co
-                if X is not None: w.x = X
-                if Y is not None: w.y = Y
-                if Z is not None: w.z = Z
+                _assign_axes(w, axis_values)
                 v.co = imw @ w
         else:
             for v in verts:
-                if X is not None: v.co.x = X
-                if Y is not None: v.co.y = Y
-                if Z is not None: v.co.z = Z
+                _assign_axes(v.co, axis_values)
 
         bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
         return {'FINISHED'}
@@ -363,14 +396,16 @@ class QS_OT_apply_curve(bpy.types.Operator):
         scn = context.scene
         P = scn.qs
 
-        X = P.x_value if P.x_enable else None
-        Y = P.y_value if P.y_enable else None
-        Z = P.z_value if P.z_enable else None
+        axis_values = {
+            axis: val
+            for axis, val in _axis_values_from_props(P).items()
+            if val is not None
+        }
         weight_val = P.curve_weight_value if P.curve_weight_enable else None
         radius_val = P.curve_radius_value if P.curve_radius_enable else None
         tilt_val = P.curve_tilt_value if P.curve_tilt_enable else None
 
-        position_enabled = any(v is not None for v in (X, Y, Z))
+        position_enabled = bool(axis_values)
         attributes_enabled = any(v is not None for v in (weight_val, radius_val, tilt_val))
         if not position_enabled and not attributes_enabled:
             self.report({'INFO'}, "No values enabled")
@@ -393,14 +428,10 @@ class QS_OT_apply_curve(bpy.types.Operator):
                 return local_vec
             if use_global and imw is not None:
                 world_vec = mw @ local_vec
-                if X is not None: world_vec.x = X
-                if Y is not None: world_vec.y = Y
-                if Z is not None: world_vec.z = Z
+                _assign_axes(world_vec, axis_values)
                 return imw @ world_vec
             new_vec = local_vec.copy()
-            if X is not None: new_vec.x = X
-            if Y is not None: new_vec.y = Y
-            if Z is not None: new_vec.z = Z
+            _assign_axes(new_vec, axis_values)
             return new_vec
 
         any_selected = False
@@ -517,11 +548,11 @@ class QS_OT_parse_and_apply(bpy.types.Operator):
         pending_object_origin = False
 
         # Local state for parsed values
-        obj_loc = {'x': None, 'y': None, 'z': None}
-        obj_rot = {'x': None, 'y': None, 'z': None}  # degrees
-        obj_sca = {'x': None, 'y': None, 'z': None}
-        obj_origin = {'x': None, 'y': None, 'z': None}
-        mesh_xyz = {'x': None, 'y': None, 'z': None}
+        obj_loc = {axis: None for axis in AXES}
+        obj_rot = {axis: None for axis in AXES}  # degrees
+        obj_sca = {axis: None for axis in AXES}
+        obj_origin = {axis: None for axis in AXES}
+        mesh_xyz = {axis: None for axis in AXES}
         obj_space_world = None
         mesh_space_global = None
         curve_space_global = None
@@ -530,7 +561,7 @@ class QS_OT_parse_and_apply(bpy.types.Operator):
 
         # Maps like loc.x, rot.y, scale.z
         def assign_map(mapref, axis, val):
-            if axis in ('x', 'y', 'z'):
+            if axis in AXES:
                 mapref[axis] = val
 
         for t in tokens:
@@ -590,9 +621,7 @@ class QS_OT_parse_and_apply(bpy.types.Operator):
             if k.startswith('rot.'):
                 axis = k[-1]
                 valf, unit = _parse_float_with_unit(v)
-                if unit == 'rad':
-                    valf = valf * 180.0 / 3.141592653589793
-                assign_map(obj_rot, axis, valf)
+                assign_map(obj_rot, axis, _normalize_rotation_value(valf, unit))
                 target_mesh = False
                 target_curve = False
                 continue
@@ -616,9 +645,7 @@ class QS_OT_parse_and_apply(bpy.types.Operator):
             if k in ('rx', 'ry', 'rz'):
                 axis = k[-1]
                 valf, unit = _parse_float_with_unit(v)
-                if unit == 'rad':
-                    valf = valf * 180.0 / 3.141592653589793
-                assign_map(obj_rot, axis, valf)
+                assign_map(obj_rot, axis, _normalize_rotation_value(valf, unit))
                 target_mesh = False
                 target_curve = False
                 continue
@@ -671,24 +698,13 @@ class QS_OT_parse_and_apply(bpy.types.Operator):
             if mesh_target is not None:
                 P.mesh_target = mesh_target
 
-            # Axis enables
-            P.x_enable = mesh_xyz['x'] is not None
-            P.y_enable = mesh_xyz['y'] is not None
-            P.z_enable = mesh_xyz['z'] is not None
-            if P.x_enable: P.x_value = mesh_xyz['x']
-            if P.y_enable: P.y_value = mesh_xyz['y']
-            if P.z_enable: P.z_value = mesh_xyz['z']
+            _assign_axis_props(P, mesh_xyz)
             return bpy.ops.view3d.qs_apply_mesh()
         if target_curve:
             if curve_space_global is not None:
                 P.mesh_space = 'GLOBAL' if curve_space_global else 'LOCAL'
 
-            P.x_enable = mesh_xyz['x'] is not None
-            P.y_enable = mesh_xyz['y'] is not None
-            P.z_enable = mesh_xyz['z'] is not None
-            if P.x_enable: P.x_value = mesh_xyz['x']
-            if P.y_enable: P.y_value = mesh_xyz['y']
-            if P.z_enable: P.z_value = mesh_xyz['z']
+            _assign_axis_props(P, mesh_xyz)
 
             P.curve_weight_enable = curve_attrs['weight'] is not None
             P.curve_radius_enable = curve_attrs['radius'] is not None
@@ -706,43 +722,23 @@ class QS_OT_parse_and_apply(bpy.types.Operator):
         # Decide transform priority: rotation > scale > origin > location
         if any(v is not None for v in obj_rot.values()):
             P.apply_transform = 'ROT'
-            P.x_enable = obj_rot['x'] is not None
-            P.y_enable = obj_rot['y'] is not None
-            P.z_enable = obj_rot['z'] is not None
-            if P.x_enable: P.x_value = obj_rot['x']
-            if P.y_enable: P.y_value = obj_rot['y']
-            if P.z_enable: P.z_value = obj_rot['z']
+            _assign_axis_props(P, obj_rot)
         elif any(v is not None for v in obj_sca.values()):
             P.apply_transform = 'SCALE'
-            P.x_enable = obj_sca['x'] is not None
-            P.y_enable = obj_sca['y'] is not None
-            P.z_enable = obj_sca['z'] is not None
-            if P.x_enable: P.x_value = obj_sca['x']
-            if P.y_enable: P.y_value = obj_sca['y']
-            if P.z_enable: P.z_value = obj_sca['z']
+            _assign_axis_props(P, obj_sca)
         elif pending_object_origin or any(v is not None for v in obj_origin.values()):
             P.apply_transform = 'ORIGIN'
-            P.x_enable = obj_origin['x'] is not None
-            P.y_enable = obj_origin['y'] is not None
-            P.z_enable = obj_origin['z'] is not None
-            if P.x_enable: P.x_value = obj_origin['x']
-            if P.y_enable: P.y_value = obj_origin['y']
-            if P.z_enable: P.z_value = obj_origin['z']
+            _assign_axis_props(P, obj_origin)
         elif pending_object_loc or any(v is not None for v in obj_loc.values()):
             P.apply_transform = 'LOC'
-            P.x_enable = obj_loc['x'] is not None
-            P.y_enable = obj_loc['y'] is not None
-            P.z_enable = obj_loc['z'] is not None
-            if P.x_enable: P.x_value = obj_loc['x']
-            if P.y_enable: P.y_value = obj_loc['y']
-            if P.z_enable: P.z_value = obj_loc['z']
+            _assign_axis_props(P, obj_loc)
         else:
             self.report({'INFO'}, "Nothing to apply")
             return {'CANCELLED'}
 
         return bpy.ops.view3d.qs_apply_object()
 
-# ------------------------- UI Panel -------------------------
+### UI Panel
 
 class VIEW3D_PT_multi_adjust(bpy.types.Panel):
     bl_label = "Multi Adjust"
@@ -844,7 +840,7 @@ class VIEW3D_PT_multi_adjust(bpy.types.Panel):
         else:
             layout.label(text="Switch to Object or Edit Mesh for controls")
 
-# ------------------------- Registration -------------------------
+### Registration
 
 classes = (
     QS_Props,
@@ -865,6 +861,3 @@ def unregister():
     del bpy.types.Scene.qs
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
-
-if __name__ == "__main__":
-    register()
