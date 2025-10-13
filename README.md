@@ -47,8 +47,8 @@ Note: if a single command includes multiple object transforms, priority is **Rot
 | `origin.z=.` or `oz=.` | Object Origin component (keeps geometry in place) |
 | `rot.y=.`        | Object Rotation component                 |
 | `scale.z=.` or `s.z=.` | Object Scale component             |
-| `space=local|global|world` | Write space                     |
-| `target=verts|edges|faces|auto` | Mesh elements to affect    |
+| `space=local / global / world` | Write space                     |
+| `target=verts / edges / faces / auto` | Mesh elements to affect    |
 ### Units
 - Rotation: degrees by default; append `rad` for radians.
 - Distances: scene units.
