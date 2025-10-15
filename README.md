@@ -1,5 +1,7 @@
 # Multi Adjust
 
+<img alt="MultiAdjustScreenshot" src="https://github.com/user-attachments/assets/cc8fca66-a5e3-455a-8852-440cde0db43c" />
+
 Multi Adjust keeps common Blender tweaks in one place so you can nudge several things at once instead of repeating the same move.
 
 ## What you can do
